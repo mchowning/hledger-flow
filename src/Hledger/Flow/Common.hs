@@ -160,7 +160,10 @@ verboseTestFile opts ch p = do
   return fileExists
 
 groupPairs' :: (Eq a, Ord a) => [(a, b)] -> [(a, [b])]
-groupPairs' = map (\ll -> (fst . head $ ll, map snd ll)) . List.groupBy ((==) `on` fst)
+groupPairs' = map (\ll -> case ll of
+                            (x:_) -> (fst x, map snd ll)
+                            []    -> error "groupBy should never produce empty lists")
+              . List.groupBy ((==) `on` fst)
               . List.sortBy (comparing fst)
 
 groupPairs :: (Eq a, Ord a) => [(a, b)] -> Map.Map a [b]

@@ -8,7 +8,6 @@ import qualified Turtle hiding (stdout, stderr, proc, procStrictWithErr)
 import Turtle ((%), (</>), (<.>))
 import Prelude hiding (putStrLn, take, writeFile)
 import qualified Data.Text as T
-import qualified Data.Text.IO as T
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Hledger.Flow.Types as FlowTypes
 import Hledger.Flow.Import.Types
