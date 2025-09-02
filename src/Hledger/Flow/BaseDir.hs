@@ -20,9 +20,7 @@ import Control.Monad.Catch (MonadThrow, throwM)
 import Control.Monad.IO.Class (MonadIO)
 import Control.Monad (when)
 
-import qualified Turtle (liftIO, repr, stripPrefix)
-import qualified Data.Text as T
-import qualified Data.Text.IO as T
+import qualified Turtle (stripPrefix)
 
 determineBaseDir :: Maybe TurtlePath -> IO (BaseDir, RunDir)
 determineBaseDir suppliedDir = do
@@ -48,19 +46,17 @@ determineBaseDirFromStartDir' startDir possibleBaseDir = do
       return (possibleBaseDir, runDir)
     else determineBaseDirFromStartDir' startDir $ parent possibleBaseDir
 
--- | We have unexpected behaviour when the runDir is deeper than the account directory,
--- e.g. "1-in" or the year directory. Specifically, include files are generated incorrectly
--- and some journals are written entirely outside of the baseDir.
--- limitRunDir can possibly removed if the above is fixed.
+-- | Limit runDir depth to prevent include file generation issues.
+-- Depths 0-4 (base through account level) are passed through unchanged.
+-- Depths greater than 4 are limited back to account level (depth 4) to prevent
+-- include files being generated in wrong locations and journals written outside baseDir.
 limitRunDir :: (MonadIO m, MonadThrow m) => BaseDir -> AbsDir -> m RunDir
 limitRunDir bd absRunDir = do
   rel <- makeRelative bd absRunDir
   let runDirDepth = pathSize rel
+  -- Only limit depths greater than 4 back to account level (depth 4)
   let fun = composeN (runDirDepth - 4) parent
   let newRunDir = fun rel
-  when (runDirDepth > 4) $ do
-    let msg = T.pack $ "Changing runDir from " ++ Turtle.repr rel ++ " to " ++ Turtle.repr newRunDir :: T.Text
-    Turtle.liftIO $ T.putStrLn msg
   return newRunDir
 
 composeN :: Int -> (a -> a) -> (a -> a)

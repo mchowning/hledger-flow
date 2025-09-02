@@ -12,9 +12,10 @@ import qualified Common.Integration
 import qualified BaseDir.Integration
 import qualified CSVImport.Unit
 import qualified CSVImport.Integration
+import qualified AccountDiscovery.Unit
 
 tests :: Test
-tests = TestList [Common.Unit.tests, Common.Integration.tests, PathHelpers.Unit.tests, BaseDir.Integration.tests, CSVImport.Unit.tests, CSVImport.Integration.tests]
+tests = TestList [Common.Unit.tests, Common.Integration.tests, PathHelpers.Unit.tests, BaseDir.Integration.tests, CSVImport.Unit.tests, CSVImport.Integration.tests, AccountDiscovery.Unit.tests]
 
 main :: IO Counts
 main = do

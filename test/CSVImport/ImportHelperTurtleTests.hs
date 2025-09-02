@@ -15,7 +15,9 @@ import TestHelpersTurtle
 import Hledger.Flow.PathHelpers (TurtlePath)
 import Hledger.Flow.Common
 import Hledger.Flow.Import.Types (TurtleFileBundle)
-import Hledger.Flow.Import.ImportHelpersTurtle (allYearIncludeFiles, groupIncludeFiles, toIncludeFiles, toIncludeLine, yearsIncludeMap)
+import Hledger.Flow.Import.ImportHelpersTurtle (allYearIncludeFiles, groupIncludeFiles, toIncludeFiles, toIncludeLine, yearsIncludeMap, generateIncludesFromAccounts)
+import Hledger.Flow.Import.ImportHelpers (discoverAccountDirs, absToAccountDir)
+import Hledger.Flow.Types (AccountDir)
 
 import Data.Either
 import qualified Data.Text as T
@@ -434,5 +436,22 @@ testToIncludeFiles = TestCase (
     txt <- toIncludeFiles (defaultOpts [absdir|/|]) ch groupedJohnBogart
     assertEqual "Convert a grouped map of paths, to a map with text contents for each file" expected txt)
 
+testAccountCentricIncludeGeneration :: Test
+testAccountCentricIncludeGeneration = TestCase (
+  do
+    -- Test: The account-centric include generation function should exist and be callable
+    -- This is a simple smoke test to verify the function compiles and runs without filesystem dependencies
+    ch <- newTChanIO
+    let emptyAccounts = [] :: [AccountDir]
+    (group1, allYears1) <- generateIncludesFromAccounts (defaultOpts [absdir|/|]) ch emptyAccounts
+
+    -- Expected: Empty accounts should produce empty results
+    let expectedGroup1 = [] :: TurtleFileBundle
+    let expectedAllYears1 = [] :: TurtleFileBundle
+
+    assertEqual "Empty accounts should produce empty include groups" expectedGroup1 group1
+    assertEqual "Empty accounts should produce empty all-years groups" expectedAllYears1 allYears1
+  )
+
 tests :: Test
-tests = TestList [testYearsIncludeMap, testYearsIncludeGrouping, testGroupIncludeFilesTinySet, testGroupIncludeFilesSmallSet, testGroupIncludeFiles, testIncludeYears, testToIncludeLine, testToIncludeFiles]
+tests = TestList [testYearsIncludeMap, testYearsIncludeGrouping, testGroupIncludeFilesTinySet, testGroupIncludeFilesSmallSet, testGroupIncludeFiles, testIncludeYears, testToIncludeLine, testToIncludeFiles, testAccountCentricIncludeGeneration]

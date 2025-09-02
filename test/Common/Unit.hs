@@ -61,5 +61,26 @@ testExtractDigits = TestCase (
     assertEqual "Extract digits from text 2" expected2 actual2
   )
 
+testConcatMapM :: Test
+testConcatMapM = TestCase (
+  do
+    -- Test that concatMapM correctly concatenates results from monadic functions
+    let f x = return [x, x + 10] :: IO [Int]
+    result <- concatMapM f [1, 2, 3]
+    let expected = [1, 11, 2, 12, 3, 13]
+    assertEqual "concatMapM with simple list" expected result
+
+    -- Test empty input list
+    emptyResult <- concatMapM f []
+    let expectedEmpty = []
+    assertEqual "concatMapM with empty list" expectedEmpty emptyResult
+
+    -- Test function that returns empty lists
+    let g _ = return [] :: IO [Int]
+    emptyFuncResult <- concatMapM g [1, 2, 3]
+    let expectedEmptyFunc = []
+    assertEqual "concatMapM with function returning empty lists" expectedEmptyFunc emptyFuncResult
+  )
+
 tests :: Test
-tests = TestList [testShowCmdArgs, testRelativeToBase, testExtractDigits]
+tests = TestList [testShowCmdArgs, testRelativeToBase, testExtractDigits, testConcatMapM]

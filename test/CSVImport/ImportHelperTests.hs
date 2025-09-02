@@ -7,10 +7,14 @@ module CSVImport.ImportHelperTests where
 import Test.HUnit
 
 import Hledger.Flow.Import.Types (InputFileBundle)
-import Hledger.Flow.Import.ImportHelpers (groupIncludesUpTo, includeFileName)
+import Hledger.Flow.Types (AccountDir(..), AccountType(..))
+import Hledger.Flow.Import.ImportHelpers (groupIncludesUpTo, includeFileName, discoverAccountDirs, categorizeAccount)
 
 import Path
 import TestHelpers
+import qualified Turtle
+import Control.Monad.IO.Class (liftIO)
+import Hledger.Flow.PathHelpers (AbsDir, fromTurtleAbsDir)
 
 testToJournal :: Test
 testToJournal = TestCase (
@@ -115,5 +119,64 @@ testGroupIncludesUpTo = TestCase (
     assertEqual "groupIncludesUpTo: A full set of journal files" expected grouped
   )
 
+testDiscoverAccountDirsEmpty :: Test
+testDiscoverAccountDirsEmpty = TestCase (
+  Turtle.sh $ do
+    currentDir <- Turtle.pwd
+    tmpdir <- Turtle.using (Turtle.mktempdir currentDir "hlflow")
+    tmpdirAbsPath <- fromTurtleAbsDir tmpdir
+
+    result <- liftIO $ discoverAccountDirs tmpdirAbsPath
+    liftIO $ assertEqual "Empty directory should return no account directories" [] result
+  )
+
+testDiscoverAndCategorizeManualOnlyAccount :: Test
+testDiscoverAndCategorizeManualOnlyAccount = TestCase (
+  Turtle.sh $ do
+    currentDir <- Turtle.pwd
+    tmpdir <- Turtle.using (Turtle.mktempdir currentDir "hlflow")
+    tmpdirAbsPath <- fromTurtleAbsDir tmpdir
+
+    -- Create manual-only account structure: import/john/bank/checking/_manual_/2020/
+    let manualDir = tmpdir Turtle.</> "import/john/bank/checking/_manual_/2020"
+    let manualFile = manualDir Turtle.</> "pre-import.journal"
+    Turtle.mktree manualDir
+    Turtle.touch manualFile
+
+    -- Discover accounts and verify the manual-only account is found and categorized correctly
+    discoveredAccounts <- liftIO $ discoverAccountDirs tmpdirAbsPath
+    liftIO $ assertEqual "Should discover exactly one account" 1 (length discoveredAccounts)
+
+    let accountDir = head discoveredAccounts
+    accountType <- liftIO $ categorizeAccount accountDir
+    liftIO $ assertEqual "Should categorize account as ManualOnly" (Just ManualOnly) accountType
+  )
+
+testDiscoverAndCategorizeMixedAccount :: Test
+testDiscoverAndCategorizeMixedAccount = TestCase (
+  Turtle.sh $ do
+    currentDir <- Turtle.pwd
+    tmpdir <- Turtle.using (Turtle.mktempdir currentDir "hlflow")
+    tmpdirAbsPath <- fromTurtleAbsDir tmpdir
+
+    -- Create mixed account structure: both CSV and manual files
+    let csvDir = tmpdir Turtle.</> "import/john/bank/checking/1-in/2020"
+    let manualDir = tmpdir Turtle.</> "import/john/bank/checking/_manual_/2020"
+    let csvFile = csvDir Turtle.</> "2020-01-01.csv"
+    let manualFile = manualDir Turtle.</> "pre-import.journal"
+    Turtle.mktree csvDir
+    Turtle.mktree manualDir
+    Turtle.touch csvFile
+    Turtle.touch manualFile
+
+    -- Discover accounts and verify the mixed account is found and categorized correctly
+    discoveredAccounts <- liftIO $ discoverAccountDirs tmpdirAbsPath
+    liftIO $ assertEqual "Should discover exactly one account" 1 (length discoveredAccounts)
+
+    let accountDir = head discoveredAccounts
+    accountType <- liftIO $ categorizeAccount accountDir
+    liftIO $ assertEqual "Should categorize account as Mixed" (Just Mixed) accountType
+  )
+
 tests :: Test
-tests = TestList [testToJournal, testIncludeFileName, testGroupIncludesUpToTinySet, testGroupIncludesUpToSmallSet, testGroupIncludesUpTo]
+tests = TestList [testToJournal, testIncludeFileName, testGroupIncludesUpToTinySet, testGroupIncludesUpToSmallSet, testGroupIncludesUpTo, testDiscoverAccountDirsEmpty, testDiscoverAndCategorizeManualOnlyAccount, testDiscoverAndCategorizeMixedAccount]

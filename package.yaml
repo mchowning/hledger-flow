@@ -34,6 +34,7 @@ library:
   - path
   - path-io
   - filepath
+  - directory
   - exceptions
   - text
   - foldl

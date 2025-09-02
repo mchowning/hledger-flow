@@ -21,7 +21,7 @@ type RelFile = Path.Path Path.Rel Path.File
 type AbsDir = Path.Path Path.Abs Path.Dir
 type RelDir = Path.Path Path.Rel Path.Dir
 
-data PathException = MissingBaseDir AbsDir | InvalidTurtleDir TurtlePath
+data PathException = MissingBaseDir AbsDir | PathIsNotDirectory TurtlePath | InvalidRunDir AbsDir String
   deriving (Eq)
 
 instance Show PathException where
@@ -29,7 +29,8 @@ instance Show PathException where
     " (or in any of its parent directories).\n\n" ++
     "Have a look at the documentation for more information:\n" ++
     T.unpack (docURL "getting-started")
-  show (InvalidTurtleDir d) = "Expected a directory but got this instead: " ++ d
+  show (PathIsNotDirectory d) = "Expected a directory but got this instead: " ++ d
+  show (InvalidRunDir d msg) = "Invalid run directory " ++ show d ++ ": " ++ msg
 
 instance Exception PathException
 
@@ -50,7 +51,7 @@ turtleToAbsDir baseDir p = do
   isDir <- Turtle.testdir p
   if isDir
     then Path.resolveDir baseDir p
-    else throwM $ InvalidTurtleDir p
+    else throwM $ PathIsNotDirectory p
 
 pathToTurtle :: Path.Path b t -> TurtlePath
 pathToTurtle = Path.toFilePath

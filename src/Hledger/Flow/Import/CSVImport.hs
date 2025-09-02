@@ -1,7 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
 
 module Hledger.Flow.Import.CSVImport
     ( importCSVs
+    , importCSVs'
     ) where
 
 import qualified Turtle hiding (stdout, stderr, proc, procStrictWithErr)
@@ -10,10 +12,12 @@ import Prelude hiding (putStrLn, take, writeFile)
 import qualified Data.Text as T
 import qualified Data.List.NonEmpty as NonEmpty
 import qualified Hledger.Flow.Types as FlowTypes
+import Hledger.Flow.Types (AccountDir(..))
 import Hledger.Flow.Import.Types
 import Hledger.Flow.BaseDir (relativeToBase, effectiveRunDir)
 import Hledger.Flow.Import.ImportHelpers
-import Hledger.Flow.Import.ImportHelpersTurtle (extractImportDirs, writeIncludesUpTo, writeToplevelAllYearsInclude)
+import qualified Hledger.Flow.Import.ImportHelpers as ImportHelpers
+import Hledger.Flow.Import.ImportHelpersTurtle (extractImportDirs, writeIncludesUpToFromAccounts, writeToplevelAllYearsInclude)
 import Hledger.Flow.PathHelpers (TurtlePath, pathToTurtle)
 import Hledger.Flow.DocHelpers (docURL)
 import Hledger.Flow.Common
@@ -24,6 +28,7 @@ import Control.Monad
 import Data.Maybe (fromMaybe, isNothing)
 
 type FileWasGenerated = Bool
+
 
 importCSVs :: RuntimeOptions -> IO ()
 importCSVs opts = Turtle.sh (
@@ -39,36 +44,64 @@ importCSVs opts = Turtle.sh (
     Turtle.wait logHandle
   )
 
+-- | Main entry point for CSV import workflow using account-centric discovery.
+-- This function discovers account directories first, then processes CSV files within each account,
+-- replacing the old CSV-first discovery approach for better support of mixed account types.
 importCSVs' :: RuntimeOptions -> TChan FlowTypes.LogMessage -> IO [(TurtlePath, FileWasGenerated)]
 importCSVs' opts ch = do
   let effectiveDir = effectiveRunDir (baseDir opts) (importRunDir opts)
   let startYearMsg = maybe " " (Turtle.format (" (for the year " % Turtle.d % " and onwards) ")) (importStartYear opts)
-  channelOutLn ch $ Turtle.format ("Collecting input files" % Turtle.s % "from "%Turtle.fp) startYearMsg (pathToTurtle effectiveDir)
-  (inputFiles, diff) <- Turtle.time $ findInputFiles (fromMaybe 0 $ importStartYear opts) effectiveDir
+  logVerbose opts ch $ Turtle.format ("Discovering accounts" % Turtle.s % "from "%Turtle.fp) startYearMsg (pathToTurtle effectiveDir)
+  logVerbose opts ch $ Turtle.format ("Effective run directory: " % Turtle.fp) (pathToTurtle effectiveDir)
 
-  let fileCount = length inputFiles
-  if fileCount == 0 && isNothing (importStartYear opts) then
+  -- Use account-centric discovery to find all account directories first
+  (discoveredAccounts, accountDiscoveryTime) <- Turtle.time $ ImportHelpers.discoverAccountDirs effectiveDir
+  let accountCount = length discoveredAccounts
+  logVerbose opts ch $ Turtle.format ("Found " % Turtle.d % " account directories in " % Turtle.s) accountCount (Turtle.repr accountDiscoveryTime)
+
+  if accountCount == 0 && isNothing (importStartYear opts) then
     do
-      let msg = Turtle.format ("I couldn't find any input files underneath " % Turtle.fp
+      let msg = Turtle.format ("I couldn't find any account directories underneath " % Turtle.fp
                         % "\n\nhledger-flow expects to find its input files in specifically\nnamed directories.\n\n" %
                         "Have a look at the documentation for a detailed explanation:\n" % Turtle.s) (pathToTurtle effectiveDir) (docURL "input-files")
       errExit 1 ch msg []
     else
     do
-      channelOutLn ch $ Turtle.format ("Found " % Turtle.d % " input files" % Turtle.s % "in " % Turtle.s % ". Proceeding with import...") fileCount startYearMsg (Turtle.repr diff)
-      let actions = map (extractAndImport opts ch . pathToTurtle) inputFiles :: [IO (TurtlePath, FileWasGenerated)]
-      importedJournals <- parAwareActions opts actions
-      (journalsOnDisk, journalFindTime) <- Turtle.time $ findJournalFiles effectiveDir
-      (_, writeIncludeTime1) <- Turtle.time $ writeIncludesUpTo opts ch (pathToTurtle effectiveDir) $ fmap pathToTurtle journalsOnDisk
+      logVerbose opts ch $ Turtle.format ("Processing " % Turtle.d % " discovered accounts...") accountCount
+
+      -- Process each discovered account to collect CSV import jobs
+      -- This replaces the old approach of discovering CSV files first
+      allCSVActions <- foldM (processAccountForCSVs opts ch) [] discoveredAccounts
+      importedJournals <- parAwareActions opts allCSVActions
+
+      -- Generate include files from discovered accounts (handles both CSV and manual)
+      logVerbose opts ch $ Turtle.format ("Generating include files for " % Turtle.d % " discovered accounts") accountCount
+
+      (_, writeIncludeTime1) <- Turtle.time $ writeIncludesUpToFromAccounts opts ch (pathToTurtle effectiveDir) discoveredAccounts
       (_, writeIncludeTime2) <- Turtle.time $ writeToplevelAllYearsInclude opts
-      let includeGenTime = journalFindTime + writeIncludeTime1 + writeIncludeTime2
-      channelOutLn ch $ Turtle.format ("Wrote include files for " % Turtle.d % " journals in " % Turtle.s) (length journalsOnDisk) (Turtle.repr includeGenTime)
+
+      let includeGenTime = writeIncludeTime1 + writeIncludeTime2
+      logVerbose opts ch $ Turtle.format ("Wrote include files for " % Turtle.d % " accounts in " % Turtle.s) accountCount (Turtle.repr includeGenTime)
       return importedJournals
+
+-- | Process a single account directory to collect CSV import actions.
+-- This function finds CSV files within the account's 1-in/ directory structure
+-- and creates import jobs for each discovered file.
+processAccountForCSVs :: RuntimeOptions -> TChan FlowTypes.LogMessage -> [IO (TurtlePath, FileWasGenerated)] -> AccountDir -> IO [IO (TurtlePath, FileWasGenerated)]
+processAccountForCSVs opts ch accActions (AccountDir accDir) = do
+  let startYear = fromMaybe 0 $ importStartYear opts
+  csvFiles <- findInputCSVs startYear accDir
+  logVerbose opts ch $ Turtle.format ("Found " % Turtle.d % " CSV files in account " % Turtle.fp) (length csvFiles) (pathToTurtle accDir)
+  let csvActions = map (extractAndImport opts ch . pathToTurtle) csvFiles
+  return $ accActions ++ csvActions
 
 extractAndImport :: RuntimeOptions -> TChan FlowTypes.LogMessage -> TurtlePath -> IO (TurtlePath, FileWasGenerated)
 extractAndImport opts ch inputFile = do
+  logVerbose opts ch $ Turtle.format ("extractAndImport processing input file: " % Turtle.fp) inputFile
   case extractImportDirs inputFile of
-    Right importDirs -> importCSV opts ch importDirs inputFile
+    Right importDirs -> do
+      logVerbose opts ch $ Turtle.format ("extractAndImport dirs ==> " % Turtle.w) importDirs
+      importCSV opts ch importDirs inputFile
     Left errorMessage -> do
       errExit 1 ch errorMessage (inputFile, False)
 

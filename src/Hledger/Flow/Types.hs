@@ -10,6 +10,22 @@ import Hledger.Flow.PathHelpers
 type BaseDir = AbsDir
 type RunDir = RelDir
 
+-- | Represents an account directory following the import/{owner}/{institution}/{account}/ pattern.
+-- This type provides the foundation for account-centric processing, enabling unified handling
+-- of CSV-only, manual-only, and mixed account types without requiring workarounds.
+newtype AccountDir = AccountDir AbsDir deriving (Eq, Show)
+
+-- | Classification of account based on available data sources.
+-- CSVOnly: Contains 1-in/ directory with CSV files
+-- ManualOnly: Contains _manual_/ directory with manual journal files
+-- Mixed: Contains both CSV and manual data sources
+data AccountType = CSVOnly | ManualOnly | Mixed deriving (Eq, Show)
+
+-- | Result of validating an account directory's structure.
+-- ValidAccount indicates the account has at least one valid data source.
+-- InvalidAccount indicates the account lacks both CSV and manual data sources.
+data AccountValidation = ValidAccount AccountType | InvalidAccount T.Text deriving (Eq, Show)
+
 data LogMessage = StdOut T.Text | StdErr T.Text | Terminate deriving (Show)
 type FullOutput = (Turtle.ExitCode, T.Text, T.Text)
 type FullTimedOutput = (FullOutput, Turtle.NominalDiffTime)

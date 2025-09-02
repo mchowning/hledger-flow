@@ -34,6 +34,11 @@ import Hledger.Flow.BaseDir (turtleBaseDir, relativeToBase)
 
 import Control.Concurrent.STM
 
+-- | Monadic version of concatMap that applies a monadic function to each element
+-- and concatenates the results. Equivalent to 'fmap concat . mapM'.
+concatMapM :: Monad m => (a -> m [b]) -> [a] -> m [b]
+concatMapM f xs = fmap concat (mapM f xs)
+
 hledgerPathFromOption :: Maybe TurtlePath -> IO AbsFile
 hledgerPathFromOption pathOption = do
   case pathOption of
