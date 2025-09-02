@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "WebSearch",
-      "Bash(stack:*)"
+      "Bash(hledger-flow:*)",
+      "Bash(stack:*)",
+      "Bash(stack test:*)",
+      "Bash(time stack test:*)",
+      "Bash(timeout:*)",
+      "Bash(touch:*)",
+      "Bash(/Users/matt/code/haskell/hledger-flow/.stack-work/install/aarch64-osx-nix/4b787305edbe9aeffd3d1c1a7a49edf8f7bd227866fd6bc2d374856e42d17e6d/9.10.2/bin/hledger-flow import --dry-run)",
+      "Bash(/Users/matt/code/haskell/hledger-flow/.stack-work/install/aarch64-osx-nix/4b787305edbe9aeffd3d1c1a7a49edf8f7bd227866fd6bc2d374856e42d17e6d/9.10.2/bin/hledger-flow import)"
     ],
     "deny": [],
     "ask": []
